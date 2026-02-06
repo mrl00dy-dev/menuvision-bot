@@ -200,8 +200,22 @@ bot.action(["STYLE_A1", "STYLE_L1", "STYLE_C1"], async (ctx) => {
 
 bot.catch((err) => console.error("Bot error:", err));
 
-bot.launch();
-console.log("Bot is running (polling)...");
+const PORT = process.env.PORT || 3000;
+const WEBHOOK_PATH = "/telegram";
+const WEBHOOK_URL = process.env.WEBHOOK_URL; // e.g. https://your-app.onrender.com
+
+if (!WEBHOOK_URL) throw new Error("Missing WEBHOOK_URL");
+
+bot.launch({
+  webhook: {
+    domain: WEBHOOK_URL.replace(/\/$/, ""),
+    hookPath: WEBHOOK_PATH,
+    port: PORT,
+  },
+});
+
+console.log("Bot is running (webhook)...");
+
 
 // graceful stop
 process.once("SIGINT", () => bot.stop("SIGINT"));
