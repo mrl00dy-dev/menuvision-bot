@@ -13,7 +13,7 @@ const { createStyleSessionStore } = require("./styleSession");
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-image-1";
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "chatgpt-image-latest";
 const IMAGE_SIZE = process.env.IMAGE_SIZE || "1024x1024";
 
 if (!BOT_TOKEN) throw new Error("Missing BOT_TOKEN in .env");
