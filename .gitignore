@@ -1,3 +1,5 @@
-node_modules
+node_modules/
 .env
+google-service-account.json
+test-sheets.js
 sessions.json
