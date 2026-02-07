@@ -43,7 +43,6 @@ async function fetchStylesOnce() {
 
   for (const row of rows) {
     const code = normalizeCode(row?.[0]);
-    Pratt
     const prompt = normalizePrompt(row?.[1]);
     const model = normalizeModel(row?.[2]);
 
@@ -92,6 +91,7 @@ function createSheetsCache({ refreshEveryMs = 120000 } = {}) {
     if (styles.size === 0) await refresh();
   }
 
+  // periodic refresh
   function startAutoRefresh() {
     setInterval(() => {
       refresh().catch(() => {});

@@ -13,8 +13,13 @@ const { createStyleSessionStore } = require("./styleSession");
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_MODEL = process.env.OPENAI_MODEL || "chatgpt-image-latest";
+
+// خله الافتراضي gpt-image-1 (عشان chatgpt-image-latest يطلع توثيق عندك)
+// وتقدر تغيّره من .env لو عندك صلاحية
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-image-1";
+
 const IMAGE_SIZE = process.env.IMAGE_SIZE || "1024x1024";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 if (!BOT_TOKEN) throw new Error("Missing BOT_TOKEN in .env");
 if (!OPENAI_API_KEY) throw new Error("Missing OPENAI_API_KEY in .env");
@@ -26,18 +31,18 @@ const bot = new Telegraf(BOT_TOKEN);
 // =========================
 const MSG = {
   INTRO:
-    "Welcome.\n\n1) Send the style number (example: 101)\n2) Then send the food image\n\nIf you send an image without a style number, I will ask you for the style number first.", // اكتب هنا اللي تبغاه
-  SALAM_REPLY: "وعليكم السلام ورحمة الله وبركاته", // اكتب هنا اللي تبغاه
-  PROMPT_STYLE: "Send the style number to continue.", // اكتب هنا اللي تبغاه
+    "Welcome.\n\n1) Send the style number (example: 101)\n2) Then send the food image\n\nIf you send an image without a style number, I will ask you for the style number first.",
+  SALAM_REPLY: "وعليكم السلام ورحمة الله وبركاته",
+  PROMPT_STYLE: "Send the style number to continue.",
 
-  INVALID_STYLE: "Invalid style number. Send the style number again.", // اكتب هنا اللي تبغاه
-  ASK_IMAGE: "Send the image.", // اكتب هنا اللي تبغاه
-  NEED_STYLE_FIRST: "Send the style number first.", // اكتب هنا اللي تبغاه
-  EXPIRED: "Session expired. Send the style number again.", // اكتب هنا اللي تبغاه
+  INVALID_STYLE: "Invalid style number. Send the style number again.",
+  ASK_IMAGE: "Send the image.",
+  NEED_STYLE_FIRST: "Send the style number first.",
+  EXPIRED: "Session expired. Send the style number again.",
 
-  PROCESSING: "Processing...", // اكتب هنا اللي تبغاه
-  DONE: "Done.", // اكتب هنا اللي تبغاه
-  FAILED: "Failed. Try again.", // اكتب هنا اللي تبغاه
+  PROCESSING: "Processing...",
+  DONE: "Done.",
+  FAILED: "Failed. Try again.",
 };
 
 // =========================
@@ -61,7 +66,6 @@ function saveStore(store) {
 
 let store = loadStore();
 
-// Mark user as seen (persisted)
 function isFirstTimeUser(userId) {
   const id = String(userId);
   return !store.users?.[id];
@@ -102,18 +106,8 @@ function isNumericCode(text) {
 
 function isGreeting(text) {
   const t = normalizeText(text);
-
-  // Common Arabic greetings you listed (and close variants)
-  // - السلام
-  // - السلام عليكم
-  // - السلام عليكم ورحمة الله
-  // - السلام عليكم ورحمة الله وبركاته
-  // Also allow optional punctuation.
   if (t === "السلام") return true;
-
-  // Regex covers: "السلام عليكم" + optional "ورحمة الله" + optional "وبركاته"
-  const re =
-    /^السلام\s+عليكم(?:\s+ورحمة\s+الله(?:\s+وبركاته)?)?[!.،]*$/;
+  const re = /^السلام\s+عليكم(?:\s+ورحمة\s+الله(?:\s+وبركاته)?)?[!.،]*$/;
   return re.test(t);
 }
 
@@ -126,7 +120,7 @@ async function sendPromptStyle(ctx) {
 }
 
 // =========================
-// OpenAI image edit helpers
+// Image helpers
 // =========================
 function sniffImageMime(buffer) {
   if (
@@ -164,7 +158,6 @@ async function downloadTelegramPhoto(ctx, fileId) {
 
   const buffer = Buffer.from(resp.data);
   const headerType = (resp.headers["content-type"] || "").toLowerCase();
-
   const sniffed = sniffImageMime(buffer);
 
   const mime =
@@ -176,11 +169,17 @@ async function downloadTelegramPhoto(ctx, fileId) {
   return { buffer, contentType: mime, ext };
 }
 
+// =========================
+// OpenAI edit
+// =========================
 async function openaiEditImage({ imageBuffer, mimeType, prompt }) {
   const form = new FormData();
   form.append("model", OPENAI_MODEL);
   form.append("prompt", prompt);
   form.append("size", IMAGE_SIZE);
+
+  // يرفع الالتزام بصورة الإدخال (جودة أفضل في edits)
+  form.append("input_fidelity", "high");
 
   const ext = mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg";
   form.append("image", imageBuffer, {
@@ -203,6 +202,40 @@ async function openaiEditImage({ imageBuffer, mimeType, prompt }) {
 }
 
 // =========================
+// Gemini (Nano Banana) edit
+// =========================
+async function geminiEditImage({ imageBuffer, mimeType, prompt }) {
+  if (!GEMINI_API_KEY) throw new Error("Missing GEMINI_API_KEY in .env");
+
+  const url =
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-image:generateContent?key=" +
+    GEMINI_API_KEY;
+
+  const payload = {
+    contents: [
+      {
+        parts: [
+          { text: prompt },
+          { inlineData: { mimeType, data: imageBuffer.toString("base64") } },
+        ],
+      },
+    ],
+  };
+
+  const resp = await axios.post(url, payload, {
+    headers: { "Content-Type": "application/json" },
+    timeout: 180000,
+  });
+
+  const parts = resp?.data?.candidates?.[0]?.content?.parts || [];
+  const imgPart = parts.find((p) => p.inlineData && p.inlineData.data);
+  const b64 = imgPart?.inlineData?.data;
+
+  if (!b64) throw new Error("Gemini: no image returned");
+  return Buffer.from(b64, "base64");
+}
+
+// =========================
 // Bot flow
 // =========================
 bot.start(async (ctx) => {
@@ -213,45 +246,33 @@ bot.start(async (ctx) => {
   return sendPromptStyle(ctx);
 });
 
-// TEXT handler (greetings + first-time + style codes)
+// TEXT handler
 bot.on("text", async (ctx) => {
   const text = normalizeText(ctx.message?.text || "");
   const first = isFirstTimeUser(ctx.from.id);
 
-  // Mark seen on any text message
   markUserSeen(ctx.from.id);
 
-  // 1) Greetings
   if (isGreeting(text)) {
     await ctx.reply(MSG.SALAM_REPLY);
-
-    if (first) {
-      return sendIntro(ctx);
-    }
+    if (first) return sendIntro(ctx);
     return sendPromptStyle(ctx);
   }
 
-  // 2) Numeric style code
   if (isNumericCode(text)) {
-    // cache + refresh-on-miss
     let prompt = stylesCache.getPrompt(text);
     if (!prompt) {
       await stylesCache.refresh().catch(() => {});
       prompt = stylesCache.getPrompt(text);
     }
 
-    if (!prompt) {
-      return ctx.reply(MSG.INVALID_STYLE);
-    }
+    if (!prompt) return ctx.reply(MSG.INVALID_STYLE);
 
     styleSessions.set(ctx.from.id, text);
     return ctx.reply(MSG.ASK_IMAGE);
   }
 
-  // 3) Any other text
-  if (first) {
-    return sendIntro(ctx);
-  }
+  if (first) return sendIntro(ctx);
   return sendPromptStyle(ctx);
 });
 
@@ -259,15 +280,10 @@ bot.on("text", async (ctx) => {
 bot.on("photo", async (ctx) => {
   const status = styleSessions.getStatus(ctx.from.id);
 
-  // Mark seen on any interaction
   markUserSeen(ctx.from.id);
 
-  if (status.state === "NONE") {
-    return ctx.reply(MSG.NEED_STYLE_FIRST);
-  }
-  if (status.state === "EXPIRED") {
-    return ctx.reply(MSG.EXPIRED);
-  }
+  if (status.state === "NONE") return ctx.reply(MSG.NEED_STYLE_FIRST);
+  if (status.state === "EXPIRED") return ctx.reply(MSG.EXPIRED);
 
   const code = status.code;
 
@@ -282,7 +298,14 @@ bot.on("photo", async (ctx) => {
     return ctx.reply(MSG.INVALID_STYLE);
   }
 
-  // best photo
+  // model from sheet column C via stylesCache.getModel(code)
+  // expected values: "openai" or "gemini"
+  let model = "openai";
+  if (typeof stylesCache.getModel === "function") {
+    const m = stylesCache.getModel(code);
+    if (m) model = String(m).trim().toLowerCase();
+  }
+
   const photos = ctx.message.photo || [];
   const best = photos[photos.length - 1];
   const fileId = best?.file_id;
@@ -293,18 +316,25 @@ bot.on("photo", async (ctx) => {
   try {
     const { buffer, contentType } = await downloadTelegramPhoto(ctx, fileId);
 
-    const outBuffer = await openaiEditImage({
-      imageBuffer: buffer,
-      mimeType: contentType,
-      prompt,
-    });
+    let outBuffer;
+    if (model === "gemini") {
+      outBuffer = await geminiEditImage({
+        imageBuffer: buffer,
+        mimeType: contentType,
+        prompt,
+      });
+    } else {
+      outBuffer = await openaiEditImage({
+        imageBuffer: buffer,
+        mimeType: contentType,
+        prompt,
+      });
+    }
 
     await ctx.replyWithPhoto({ source: outBuffer }, { caption: MSG.DONE });
   } catch (err) {
     console.error(err);
-    const msg = err?.response?.data
-      ? JSON.stringify(err.response.data)
-      : err?.message || MSG.FAILED;
+    const msg = err?.response?.data ? JSON.stringify(err.response.data) : err?.message || MSG.FAILED;
     await ctx.reply(String(msg).slice(0, 3500));
   } finally {
     styleSessions.clear(ctx.from.id);
