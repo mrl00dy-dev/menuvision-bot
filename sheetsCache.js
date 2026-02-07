@@ -1,7 +1,8 @@
 const { google } = require("googleapis");
 
 const SHEET_NAME = "برمجة الصور";
-const RANGE = `${SHEET_NAME}!A:B`;
+// A = code, B = prompt, C = model (openai / gemini)
+const RANGE = `${SHEET_NAME}!A:C`;
 
 function nowMs() {
   return Date.now();
@@ -15,6 +16,13 @@ function normalizeCode(value) {
 function normalizePrompt(value) {
   if (value === null || value === undefined) return "";
   return String(value).trim();
+}
+
+function normalizeModel(value) {
+  if (value === null || value === undefined) return "openai";
+  const m = String(value).trim().toLowerCase();
+  if (m === "gemini") return "gemini";
+  return "openai";
 }
 
 async function fetchStylesOnce() {
@@ -35,10 +43,12 @@ async function fetchStylesOnce() {
 
   for (const row of rows) {
     const code = normalizeCode(row?.[0]);
+    Pratt
     const prompt = normalizePrompt(row?.[1]);
+    const model = normalizeModel(row?.[2]);
 
     if (!code || !prompt) continue; // ignore blanks
-    map.set(code, prompt);
+    map.set(code, { prompt, model });
   }
 
   return map;
@@ -68,14 +78,20 @@ function createSheetsCache({ refreshEveryMs = 120000 } = {}) {
 
   function getPrompt(code) {
     const key = normalizeCode(code);
-    return styles.get(key) || null;
+    const row = styles.get(key);
+    return row?.prompt || null;
+  }
+
+  function getModel(code) {
+    const key = normalizeCode(code);
+    const row = styles.get(key);
+    return row?.model || "openai";
   }
 
   async function ensureWarm() {
     if (styles.size === 0) await refresh();
   }
 
-  // periodic refresh
   function startAutoRefresh() {
     setInterval(() => {
       refresh().catch(() => {});
@@ -87,6 +103,7 @@ function createSheetsCache({ refreshEveryMs = 120000 } = {}) {
     ensureWarm,
     startAutoRefresh,
     getPrompt,
+    getModel,
     get lastRefreshAt() {
       return lastRefreshAt;
     },
