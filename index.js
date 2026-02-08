@@ -7,6 +7,8 @@ const path = require("path");
 const axios = require("axios");
 const FormData = require("form-data");
 const { Telegraf } = require("telegraf");
+const sharp = require("sharp");
+
 
 const { createSheetsCache } = require("./sheetsCache");
 const { createStyleSessionStore } = require("./styleSession");
@@ -169,22 +171,24 @@ async function downloadTelegramPhoto(ctx, fileId) {
   return { buffer, contentType: mime, ext };
 }
 
+
 // =========================
 // OpenAI edit
 // =========================
 async function openaiEditImage({ imageBuffer, mimeType, prompt }) {
   const form = new FormData();
+
   form.append("model", "dall-e-2");
   form.append("prompt", prompt);
   form.append("size", IMAGE_SIZE);
   form.append("response_format", "b64_json");
 
+  // DALL·E edits supports PNG only → convert anything (jpeg/webp/...) to PNG
+  const pngBuffer = await sharp(imageBuffer).png().toBuffer();
 
-
-  const ext = mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg";
-  form.append("image", imageBuffer, {
-    filename: `input.${ext}`,
-    contentType: mimeType,
+  form.append("image", pngBuffer, {
+    filename: "input.png",
+    contentType: "image/png",
   });
 
   const resp = await axios.post("https://api.openai.com/v1/images/edits", form, {
@@ -200,6 +204,7 @@ async function openaiEditImage({ imageBuffer, mimeType, prompt }) {
   if (!b64) throw new Error("OpenAI: no b64_json returned");
   return Buffer.from(b64, "base64");
 }
+
 
 // =========================
 // Gemini (Nano Banana) edit
