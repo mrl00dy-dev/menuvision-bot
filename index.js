@@ -174,7 +174,7 @@ async function downloadTelegramPhoto(ctx, fileId) {
 // =========================
 async function openaiEditImage({ imageBuffer, mimeType, prompt }) {
   const form = new FormData();
-  form.append("model", OPENAI_MODEL);
+  form.append("model", "dall-e-2");
   form.append("prompt", prompt);
   form.append("size", IMAGE_SIZE);
   form.append("response_format", "b64_json");
