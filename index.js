@@ -9,17 +9,16 @@ const FormData = require("form-data");
 const { Telegraf } = require("telegraf");
 const sharp = require("sharp");
 
-
 const { createSheetsCache } = require("./sheetsCache");
 const { createStyleSessionStore } = require("./styleSession");
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-// خله الافتراضي gpt-image-1 (عشان chatgpt-image-latest يطلع توثيق عندك)
-// وتقدر تغيّره من .env لو عندك صلاحية
+// Default to gpt-image-1.5; can be overridden via .env / Render env
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-image-1.5";
 
+// GPT Image sizes: 1024x1024 / 1536x1024 / 1024x1536 / auto
 const IMAGE_SIZE = process.env.IMAGE_SIZE || "1024x1024";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
@@ -171,21 +170,26 @@ async function downloadTelegramPhoto(ctx, fileId) {
   return { buffer, contentType: mime, ext };
 }
 
-
 // =========================
-// OpenAI edit
+// OpenAI edit (GPT Image)
 // =========================
 async function openaiEditImage({ imageBuffer, mimeType, prompt }) {
   const form = new FormData();
 
-  form.append("model", "dall-e-2");
+  // GPT Image model (supports long prompts)
+  form.append("model", OPENAI_MODEL);
   form.append("prompt", prompt);
-  form.append("size", IMAGE_SIZE);
-  form.append("response_format", "b64_json");
 
-  // DALL·E edits supports PNG only → convert anything (jpeg/webp/...) to PNG
+  // sizes: 1024x1024 / 1536x1024 / 1024x1536 / auto
+  form.append("size", IMAGE_SIZE);
+
+  // Improve adherence to the input image
+  form.append("input_fidelity", "high");
+
+  // Convert Telegram image to PNG for maximum compatibility
   const pngBuffer = await sharp(imageBuffer).png().toBuffer();
 
+  // IMPORTANT: multipart field name is "image"
   form.append("image", pngBuffer, {
     filename: "input.png",
     contentType: "image/png",
@@ -204,7 +208,6 @@ async function openaiEditImage({ imageBuffer, mimeType, prompt }) {
   if (!b64) throw new Error("OpenAI: no b64_json returned");
   return Buffer.from(b64, "base64");
 }
-
 
 // =========================
 // Gemini (Nano Banana) edit
