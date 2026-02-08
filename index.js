@@ -180,8 +180,6 @@ async function openaiEditImage({ imageBuffer, mimeType, prompt }) {
   form.append("response_format", "b64_json");
 
 
-  // يرفع الالتزام بصورة الإدخال (جودة أفضل في edits)
-  form.append("input_fidelity", "high");
 
   const ext = mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg";
   form.append("image", imageBuffer, {
