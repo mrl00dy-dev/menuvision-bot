@@ -16,7 +16,7 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 // خله الافتراضي gpt-image-1 (عشان chatgpt-image-latest يطلع توثيق عندك)
 // وتقدر تغيّره من .env لو عندك صلاحية
-const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-image-1";
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-image-1.5";
 
 const IMAGE_SIZE = process.env.IMAGE_SIZE || "1024x1024";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -177,6 +177,8 @@ async function openaiEditImage({ imageBuffer, mimeType, prompt }) {
   form.append("model", OPENAI_MODEL);
   form.append("prompt", prompt);
   form.append("size", IMAGE_SIZE);
+  form.append("response_format", "b64_json");
+
 
   // يرفع الالتزام بصورة الإدخال (جودة أفضل في edits)
   form.append("input_fidelity", "high");
